@@ -1,0 +1,118 @@
+"Ticker","Name","Sector_Group","Cntry_Terrtry_Fl_Name","GICS_SubInd_Name","Market_Cap_Bn","Stock_Weight_Pct"
+"RJHI AB Equity","AL RAJHI BANK","Banks","SAUDI ARABIA","Diversified Banks",102.21,9.72672394982835
+"BUPA AB Equity","BUPA ARABIA FOR COOPERATIVE","Insurance","SAUDI ARABIA","Life & Health Insurance",5.61,5.65150947888212
+"SNB AB Equity","THE SAUDI NATIONAL BANK","Banks","SAUDI ARABIA","Diversified Banks",59.19,5.63206238096477
+"FAB UH Equity","FIRST ABU DHABI BANK PJSC","Banks","UAE","Diversified Banks",51.56,4.90662509802707
+"TAWUNIYA AB Equity","CO FOR COOPERATIVE INSURANCE","Insurance","SAUDI ARABIA","Life & Health Insurance",4.6,4.63568894487478
+"EMIRATES UH Equity","EMIRATES NBD PJSC","Banks","UAE","Diversified Banks",47.73,4.54201141712151
+"QNBK QD Equity","QATAR NATIONAL BANK","Banks","QATAR","Diversified Banks",46.51,4.42566552479003
+"JOMAR AB Equity","JABAL OMAR DEVELOPMENT CO","Consumer Discretionary","SAUDI ARABIA","Hotels, Resorts & Cruise Lines",4.78,4.10304863447392
+"INVESTB UH Equity","INVEST BANK","Banks","UAE","Diversified Banks",32.25,3.06880281455765
+"ADCB UH Equity","ABU DHABI COMMERCIAL BANK","Banks","UAE","Diversified Banks",29.53,2.81015989140431
+"SECO AB Equity","SAUDI ELECTRICITY CO","AI","SAUDI ARABIA","Electric Utilities",15.27,2.65917432111067
+"MOUWASAT AB Equity","MOUWASAT MEDICAL SERVICES CO","Healthcare","SAUDI ARABIA","Health Care Facilities",3.69,2.39866520807367
+"DALLAH AB Equity","DALLAH HEALTHCARE CO","Healthcare","SAUDI ARABIA","Health Care Facilities",3.28,2.1301233811148
+"ARCCI AB Equity","AL RAJHI CO FOR CO-OPERATIVE","Insurance","SAUDI ARABIA","Multi-line Insurance",2.08,2.09748128781146
+"ADIB UH Equity","ABU DHABI ISLAMIC BANK","Banks","UAE","Diversified Banks",20.93,1.9914228147422
+"RIBL AB Equity","RIYAD BANK","Banks","SAUDI ARABIA","Diversified Banks",20.57,1.95752222214073
+"QATI QD Equity","QATAR INSURANCE CO","Insurance","QATAR","Property & Casualty Insurance",1.84,1.8519645326609
+"SEERA AB Equity","SEERA GROUP HOLDING","Consumer Discretionary","SAUDI ARABIA","Hotels, Resorts & Cruise Lines",2.07,1.77880725241143
+"DIB UH Equity","DUBAI ISLAMIC BANK","Banks","UAE","Diversified Banks",18.63,1.77303371368182
+"SABB AB Equity","SAUDI AWWAL BANK","Banks","SAUDI ARABIA","Diversified Banks",17.64,1.6785672787414
+"ALINMA AB Equity","ALINMA BANK","Banks","SAUDI ARABIA","Diversified Banks",16.13,1.53486384706472
+"QIBK QD Equity","QATAR ISLAMIC BANK","Banks","QATAR","Diversified Banks",15.47,1.47217726651385
+"MASQ UH Equity","MASHREQBANK","Banks","UAE","Diversified Banks",13.77,1.30995002924421
+"ADNH UH Equity","ABU DHABI NATIONAL HOTELS","Consumer Discretionary","UAE","Hotels, Resorts & Cruise Lines",1.5,1.28945082698411
+"SAUDIRE AB Equity","SAUDI RE FOR COOPERATIVE REI","Insurance","SAUDI ARABIA","Reinsurance",1.21,1.22207827118537
+"ADNIC UH Equity","ABU DHABI NATIONAL INSURANCE","Insurance","UAE","Multi-line Insurance",1.09,1.10300293569855
+"ARNB AB Equity","ARAB NATIONAL BANK","Banks","SAUDI ARABIA","Diversified Banks",11.29,1.07465838944895
+"CARE AB Equity","NATIONAL MEDICAL CARE CO","Healthcare","SAUDI ARABIA","Health Care Facilities",1.65,1.07269209337647
+"BSF AB Equity","BANQUE SAUDI FRANSI","Banks","SAUDI ARABIA","Diversified Banks",11.21,1.0667937978359
+"CHEMICAL AB Equity","SAUDI CHEMICAL CO HOLDING","Healthcare","SAUDI ARABIA","Health Care Distributors",1.46,0.949899152630794
+"ALBI AB Equity","BANK ALBILAD","Banks","SAUDI ARABIA","Diversified Banks",9.91,0.942609359300659
+"NCTH UH Equity","NATIONAL CORP TOURISM & HOTE","Consumer Discretionary","UAE","Hotels, Resorts & Cruise Lines",1.08,0.930800001632577
+"ALHAMMAD AB Equity","AL HAMMADI HOLDING","Healthcare","SAUDI ARABIA","Health Care Facilities",1.18,0.764799843221641
+"CBD UH Equity","COMMERCIAL BANK OF DUBAI","Banks","UAE","Diversified Banks",7.78,0.740263206103094
+"EIC AB Equity","ELECTRICAL INDUSTRIES CO","AI","SAUDI ARABIA","Electrical Components & Equipment",3.44,0.599456061181527
+"SPIMACO AB Equity","SAUDI PHARMACEUTICAL INDUSTR","Healthcare","SAUDI ARABIA","Pharmaceuticals",0.84,0.544483137115914
+"MARK QD Equity","AL RAYAN BANK","Banks","QATAR","Diversified Banks",5.58,0.531335349329474
+"MEDGULF AB Equity","MEDITERRANEAN & GULF INSURAN","Insurance","SAUDI ARABIA","Life & Health Insurance",0.45,0.456673702545758
+"SUKOON UH Equity","SUKOON INSURANCE PJSC","Insurance","UAE","Multi-line Insurance",0.45,0.456390846596832
+"CBQK QD Equity","COMMERCIAL BANK PSQC","Banks","QATAR","Diversified Banks",4.71,0.448089466333697
+"QIIK QD Equity","QATAR INTERNATIONAL ISLAMIC","Banks","QATAR","Diversified Banks",4.64,0.441101830680884
+"RAKBANK UH Equity","NATIONAL BANK OF RAS AL-KHAI","Banks","UAE","Diversified Banks",4.27,0.406551383934653
+"SIBC AB Equity","SAUDI INVESTMENT BANK/THE","Banks","SAUDI ARABIA","Diversified Banks",4.27,0.405914405835299
+"DIN UH Equity","DUBAI INSURANCE CO. (P.S.C.)","Insurance","UAE","Multi-line Insurance",0.37,0.370549688417907
+"WALAA AB Equity","WALAA COOPERATIVE INSURANCE","Insurance","SAUDI ARABIA","Multi-line Insurance",0.37,0.370218188053092
+"QISI QD Equity","QATAR ISLAMIC INSURANCE GROU","Insurance","QATAR","Multi-line Insurance",0.37,0.370088221225247
+"QGRI QD Equity","QATAR GENERAL INSURANCE & RE","Insurance","QATAR","Property & Casualty Insurance",0.36,0.367903618004483
+"BJAZ AB Equity","BANK AL-JAZIRA","Banks","SAUDI ARABIA","Diversified Banks",3.75,0.356903412536982
+"DOHI QD Equity","DOHA INSURANCE CO","Insurance","QATAR","Property & Casualty Insurance",0.35,0.352939140720042
+"NBF UH Equity","NATIONAL BANK OF FUJAIRAH","Banks","UAE","Diversified Banks",3.37,0.320946270230185
+"MCGS QD Equity","MEDICARE GROUP","Healthcare","QATAR","Health Care Facilities",0.49,0.31729406685022
+"GIG AB Equity","GULF INSURANCE GROUP","Insurance","SAUDI ARABIA","Multi-line Insurance",0.31,0.313493503689488
+"EIC UH Equity","EMIRATES INSURANCE CO. (PSC)","Insurance","UAE","Multi-line Insurance",0.3,0.300556977347531
+"NGI UH Equity","NATIONAL GENERAL INSURANCE","Insurance","UAE","Multi-line Insurance",0.27,0.267125757413182
+"SIB UH Equity","SHARJAH ISLAMIC BANK","Banks","UAE","Diversified Banks",2.73,0.259913541114188
+"ABQK QD Equity","AL AHLI BANK","Banks","QATAR","Diversified Banks",2.58,0.245810342919711
+"SHIELD AB Equity","ARABIAN SHIELD COOPERATIVE","Insurance","SAUDI ARABIA","Multi-line Insurance",0.24,0.241947094138207
+"GMPC UH Equity","GULF MEDICAL PROJECTS","Healthcare","UAE","Health Care Facilities",0.37,0.241257434407762
+"JULPHAR UH Equity","GULF PHARMACEUTICAL IND PSC","Healthcare","UAE","Pharmaceuticals",0.37,0.23926243781718
+"DHBK QD Equity","DOHA BANK QPSC","Banks","QATAR","Diversified Banks",2.38,0.2266854217549
+"ACE AB Equity","CHUBB ARABIA COOPERATIVE INS","Insurance","SAUDI ARABIA","Property & Casualty Insurance",0.22,0.226490356100896
+"HERFY AB Equity","HERFY FOOD SERVICES CO","Consumer Discretionary","SAUDI ARABIA","Restaurants",0.26,0.222678942765415
+"ABNIC UH Equity","AL BUHAIRA NATIONAL INSURANC","Insurance","UAE","Multi-line Insurance",0.21,0.208605747899045
+"JAZTAKAF AB Equity","ALJAZIRA TAKAFUL TA'AWUNI CO","Insurance","SAUDI ARABIA","Multi-line Insurance",0.2,0.200423003773195
+"ALLIANZ AB Equity","ALLIANZ SAUDI FRANSI COOPERA","Insurance","SAUDI ARABIA","Multi-line Insurance",0.19,0.189619833014704
+"AWNIC UH Equity","AL WATHBA NATIONAL INSURANCE","Insurance","UAE","Multi-line Insurance",0.18,0.184089085747822
+"AKHI QD Equity","AL KHALEEJ TAKAFUL GROUP","Insurance","QATAR","Property & Casualty Insurance",0.16,0.160778252571313
+"TECO AB Equity","TOURISM ENTERPRISE CO/ SHAMS","Consumer Discretionary","SAUDI ARABIA","Hotels, Resorts & Cruise Lines",0.18,0.155423185371482
+"NBQ UH Equity","NATIONAL BANK OF UMM AL QAIW","Banks","UAE","Diversified Banks",1.51,0.144071064595175
+"AICC AB Equity","ARABIA INSURANCE COOPERATIVE","Insurance","SAUDI ARABIA","Multi-line Insurance",0.14,0.143142012550003
+"WATAN AB Equity","WATANIYA INSURANCE CO","Insurance","SAUDI ARABIA","Multi-line Insurance",0.14,0.139527518850956
+"TKFL UH Equity","ABU DHABI NATIONAL TAKAFUL C","Insurance","UAE","Multi-line Insurance",0.14,0.139491375993188
+"DHAFRA UH Equity","AL DHAFRA INSURANCE CO. P.S.","Insurance","UAE","Multi-line Insurance",0.13,0.133397891495169
+"GULFUNI AB Equity","GULF UNION COOPERATIVE INSUR","Insurance","SAUDI ARABIA","Multi-line Insurance",0.13,0.133202886483356
+"AATD AB Equity","BAAN HOLDING GROUP CO","Consumer Discretionary","SAUDI ARABIA","Hotels, Resorts & Cruise Lines",0.15,0.131145858771537
+"ALAIN UH Equity","AL AIN AHLIA INS. CO.","Insurance","UAE","Multi-line Insurance",0.13,0.127633781566168
+"MALATH AB Equity","MALATH INSURANCE","Insurance","SAUDI ARABIA","Property & Casualty Insurance",0.12,0.124962049818364
+"LIVA AB Equity","LIVA INSURANCE CO","Insurance","SAUDI ARABIA","Property & Casualty Insurance",0.12,0.118243660043183
+"ALETIHAD AB Equity","AL-ETIHAD COOPERATIVE INSURA","Insurance","SAUDI ARABIA","Multi-line Insurance",0.11,0.111122166881491
+"ALLIANCE UH Equity","ALLIANCE INSURANCE COMPANY","Insurance","UAE","Multi-line Insurance",0.11,0.107047687765173
+"RAKNIC UH Equity","RAS AL-KHAIMAH NATIONAL INSU","Insurance","UAE","Multi-line Insurance",0.11,0.106520685351182
+"DNIR UH Equity","DUBAI NATIONAL INSURANCE","Insurance","UAE","Multi-line Insurance",0.11,0.106203654895906
+"UAB UH Equity","UNITED ARAB BANK PJSC","Banks","UAE","Diversified Banks",1.11,0.1058209758873
+"SALAMA UH Equity","ISLAMIC ARAB INSURANCE COM","Insurance","UAE","Property & Casualty Insurance",0.1,0.101354530097094
+"BOS UH Equity","BANK OF SHARJAH","Banks","UAE","Diversified Banks",1.05,0.100279677919734
+"TAKAFULE UH Equity","TAKAFUL EMARAT INSURANCE","Insurance","UAE","Life & Health Insurance",0.1,0.0982940442680993
+"AJMANBAN UH Equity","AJMAN BANK PJSC","Banks","UAE","Diversified Banks",0.99,0.0938601000530427
+"SAICO AB Equity","SAUDI ARABIAN COOP INS CO","Insurance","SAUDI ARABIA","Multi-line Insurance",0.09,0.0938424683797259
+"ORIENT UH Equity","ORIENT INSURANCE PJSC","Insurance","UAE","Property & Casualty Insurance",0.09,0.0909905387886807
+"WAHA UH Equity","WAHA CAPITAL PJSC","Banks","UAE","Asset Management & Custody Banks",0.87,0.0829697297337099
+"HAYAH UH Equity","HAYAH INSURANCE CO PJSC","Insurance","UAE","Life & Health Insurance",0.08,0.0823443752039794
+"SAGR AB Equity","AL SAGR CO-OPERATIVE INSURAN","Insurance","SAUDI ARABIA","Life & Health Insurance",0.08,0.078685781046918
+"AFNIC UH Equity","AL FUJAIRAH NATIONAL INSURAN","Insurance","UAE","Property & Casualty Insurance",0.08,0.0767202543775476
+"UNION UH Equity","UNION INSURANCE CO","Insurance","UAE","Multi-line Insurance",0.08,0.0757568694026291
+"SALAMA AB Equity","SALAMA COOPERATIVE INSURANCE","Insurance","SAUDI ARABIA","Multi-line Insurance",0.07,0.0733648163449748
+"AMANA AB Equity","AMANA COOPERATIVE INSURANCE","Insurance","SAUDI ARABIA","Multi-line Insurance",0.07,0.0688715572633338
+"ACIG AB Equity","ALLIED COOPERATIVE INSURANCE","Insurance","SAUDI ARABIA","Property & Casualty Insurance",0.06,0.0649859093529602
+"SICO UH Equity","SHARJAH INSURANCE COMPANY","Insurance","UAE","Multi-line Insurance",0.06,0.0625817243696834
+"SUKOONTA UH Equity","SUKOON TAKAFUL PJSC","Insurance","UAE","Multi-line Insurance",0.06,0.0600235580846718
+"WATANI UH Equity","WATANIA INTERNATIONAL HOLDIN","Insurance","UAE","Property & Casualty Insurance",0.05,0.0495571613419045
+"ALFIRDOU UH Equity","AL FIRDOUS HOLDINGS PJSC","Consumer Discretionary","UAE","Hotels, Resorts & Cruise Lines",0.06,0.0486452975895211
+"ENAYA AB Equity","SAUDI ENAYA COOPERATIVE INSU","Insurance","SAUDI ARABIA","Life & Health Insurance",0.04,0.0425865291069163
+"MESC AB Equity","MIDDLE EAST SPECIALIZED CABL","AI","SAUDI ARABIA","Electrical Components & Equipment",0.24,0.0414768824058701
+"ASNIC UH Equity","AL SAGR NATIONAL INSURANCE C","Insurance","UAE","Multi-line Insurance",0.04,0.0414768621213759
+"FIDELITY UH Equity","FIDELITY UNITED INSURANCE CO","Insurance","UAE","Property & Casualty Insurance",0.04,0.0414466685908893
+"CBI UH Equity","COMMERCIAL BANK INTERNATIONA","Banks","UAE","Diversified Banks",0.42,0.0403822030925567
+"SCACO AB Equity","SAUDI CABLE CO","AI","SAUDI ARABIA","Electrical Components & Equipment",0.23,0.0398927353019332
+"UCA AB Equity","UNITED CO-OPERATIVE ASSURANC","Insurance","SAUDI ARABIA","Property & Casualty Insurance",0.04,0.0392353962870561
+"GGCI AB Equity","GULF GENERAL COOPERATIVE INS","Insurance","SAUDI ARABIA","Property & Casualty Insurance",0.03,0.0339413051442136
+"QGMD QD Equity","QATAR GERMAN CO FOR MEDICAL","Healthcare","QATAR","Health Care Supplies",0.05,0.0315232453915384
+"IH UH Equity","INSURANCE HOUSE","Insurance","UAE","Property & Casualty Insurance",0.02,0.0201812700767851
+"AMAN UH Equity","DUBAI ISLAMIC INSURANCE CO","Insurance","UAE","Property & Casualty Insurance",0.02,0.0185892434409684
+"EIBANK UH Equity","EMIRATES INVESTMENT BANK","Banks","UAE","Asset Management & Custody Banks",0.18,0.0168428404587441
+"METHAQ UH Equity","METHAQ TAKAFUL INSURANCE","Insurance","UAE","Multi-line Insurance",0.01,0.00852264292685284
+"AKIC UH Equity","AL KHAZNA INSURANCE CO","Insurance","UAE","Multi-line Insurance",0.01,0.00653265391667833
+"RAPCO UH Equity","RAS AL KHAIMA POULTRY","Banks","UAE","Asset Management & Custody Banks",0.06,0.00544252818841866
+"TNI UH Equity","NATIONAL INVESTOR CO/THE","Banks","UAE","Asset Management & Custody Banks",0.03,0.00316645389010113

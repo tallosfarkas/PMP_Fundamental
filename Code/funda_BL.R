@@ -1,23 +1,11 @@
 # ==============================================================================
 # Load Required Packages
 # ==============================================================================
-install.packages(c(
-  "tidyverse",
-  "readxl",
-  "zoo",
-  "xts",
-  "quadprog",
-  "PerformanceAnalytics",
-  "corrplot"
-))
+if(!require("pacman")) {
+  install.packages("pacman")
+}
+pacman::p_load(tidyverse, readxl, zoo, xts, quadprog, PerformanceAnalytics, corrplot, corpcor)
 
-library(tidyverse)
-library(readxl)
-library(zoo)
-library(xts)
-library(quadprog)
-library(PerformanceAnalytics)
-library(corrplot)
 
 # ==============================================================================
 # STEP 1: Load Data
@@ -26,6 +14,8 @@ library(corrplot)
 # Load price/returns data from .rds file
 # Each column = company ticker, each row = date
 price_data <- readRDS("bloomberg_funda.rds")
+
+head(price_data[[1]])
 
 # Convert to data frame if it's a matrix
 if (is.matrix(price_data)) {
@@ -139,51 +129,61 @@ print(dim(price_df_wide))
 # STEP 3: Clean Sector Mapping with Exact Column Names
 # ==============================================================================
 
-# ---- Define AI subindustries (from your agreed list)
+sapply(sector_mapping[c("GICS_Sector", "GICS_Ind_Name", "GICS_SubInd_Name")], unique)
+
+# ==============================================================================
+# STEP 3: Clean Sector Mapping (ROBUST VERSION)
+# ==============================================================================
+
+# 1. Define AI subindustries (Keep as is)
 ai_subinds <- c(
-  # Power for compute
-  "Electric Utilities",
-  "Independent Power Producers & Energy Traders",
-  "Renewable Electricity",
-
-  # Grid / electrification / hardware
-  "Electrical Components & Equipment",
-  "Electrical Equipment & Instruments",
-  "Electronic Equipment & Instruments",
-  "Electronic Equipment, Instruments & Components",
-
-  # Compute / software
-  "Application Software"
+  "Electric Utilities", "Independent Power Producers & Energy Traders",
+  "Renewable Electricity", "Electrical Components & Equipment",
+  "Electrical Equipment & Instruments", "Electronic Equipment & Instruments",
+  "Electronic Equipment, Instruments & Components", "Application Software"
 )
+
+# 2. Define Logistics Keywords (Use patterns, not exact strings)
+# This captures "Marine Transportation", "Air Freight", "Transportation Inf", etc.
+logistics_pattern <- "Logistics|Marine|Freight|Trucking|Airport|Rail|Transport|Shipping|Ports|Storage"
 
 sector_mapping_clean <- sector_mapping %>%
   mutate(
-    # Market cap numeric
     Market_Cap_Num = as.numeric(Market_Cap),
-
-    # Build custom Sector_Group (order matters!)
+    
+    # Build custom Sector_Group (Order matters!)
     Sector_Group = case_when(
-      # 1) AI first so utilities/energy/tech names can be captured by AI
+      # 1. AI (High priority)
       GICS_SubInd_Name %in% ai_subinds ~ "AI",
-
-      # 2) Split Financials into Banks vs Insurance (use subindustry labels)
+      
+      # 2. Logistics (Using Pattern Matching)
+      # This catches "Marine Transportation", "Air Freight & Logistics", etc.
+      str_detect(GICS_SubInd_Name, regex(logistics_pattern, ignore_case = TRUE)) ~ "Logistics",
+      
+      # 3. Financials Split
+      str_detect(GICS_SubInd_Name, "Insurance|Reinsurance|Insurance Brokers") ~ "Insurance",
       str_detect(GICS_SubInd_Name, "Banks") ~ "Banks",
-      str_detect(
-        GICS_SubInd_Name,
-        "Insurance|Reinsurance|Insurance Brokers"
-      ) ~ "Insurance",
-
-      # 3) Healthcare & Consumer Discretionary via sector
+      
+      # 4. Standard Sectors
       str_detect(GICS_Sector, "Health") ~ "Healthcare",
-      str_detect(
-        GICS_Sector,
-        "Consumer Discretionary"
-      ) ~ "Consumer Discretionary",
-
-      # fallback
+      str_detect(GICS_Sector, "Consumer Discretionary") ~ "Consumer Discretionary",
+      
+      # Fallback
       TRUE ~ "Other"
     )
   )
+
+# --- DEBUGGING STEP ---
+# Run this immediately after Step 3 to see if it worked
+print("Check Logistics Count:")
+print(table(sector_mapping_clean$Sector_Group))
+
+# Check exactly WHICH companies were caught in Logistics
+print("Companies in Logistics:")
+sector_mapping_clean %>% 
+  filter(Sector_Group == "Logistics") %>% 
+  select(Ticker, Name, GICS_SubInd_Name) %>% 
+  print()
 
 print(table(sector_mapping_clean$Sector_Group))
 
@@ -222,9 +222,11 @@ print(paste("\nFinal matched tickers:", length(matched_tickers)))
 # STEP 5: Define Target Sectors and Filter
 # ==============================================================================
 
+
 target_sectors <- c(
   "Banks",
-  "Insurance",
+  "Insurance",              # <--- Ensuring Insurance is here
+  "Logistics",              # <--- Ensuring Logistics is here
   "AI",
   "Healthcare",
   "Consumer Discretionary"
@@ -237,321 +239,211 @@ target_tickers <- sector_mapping_filtered$Ticker
 
 print("\nCompanies by target sector:")
 print(table(sector_mapping_filtered$Sector_Group))
-
 # ==============================================================================
-# STEP 6: Filter for Last 10 Years
+# STEP 6: Filter, Fill NAs, and Convert to Weekly (CORRECTED)
 # ==============================================================================
+library(lubridate)
 
+# 1. Filter Date Range (Last 10 Years)
 cutoff_date <- max(price_df_matched$Date, na.rm = TRUE) - years(10)
-
-price_df_final <- price_df_matched %>%
+price_filtered <- price_df_matched %>%
   filter(Date >= cutoff_date) %>%
-  select(Date, all_of(target_tickers))
+  select(Date, all_of(target_tickers)) %>%
+  arrange(Date)
 
-# Remove tickers with >20% missing data
-missing_pct <- colSums(is.na(select(price_df_final, -Date))) /
-  nrow(price_df_final)
-valid_tickers <- names(missing_pct[missing_pct < 0.2])
+# 2. CRITICAL FIX: Fill NAs *Daily* before aggregating to Weekly
+# This prevents "last()" from picking an NA if the specific Friday/Sunday is missing
+price_filled <- price_filtered %>%
+  mutate(across(-Date, ~ zoo::na.locf(., na.rm = FALSE))) %>%
+  mutate(across(-Date, ~ zoo::na.locf(., fromLast = TRUE))) # Fill leading NAs too
 
-price_df_final <- price_df_final %>%
+# 3. Convert to WEEKLY data
+price_weekly <- price_filled %>%
+  mutate(Week_End = ceiling_date(Date, "week")) %>%
+  group_by(Week_End) %>%
+  summarise(across(everything(), last), .groups = 'drop') %>%
+  select(-Date) %>%
+  rename(Date = Week_End) %>%
+  slice(1:(n()-1)) # Remove incomplete last week
+
+# 4. Filter for valid tickers (Relaxed Threshold)
+# Allow up to 60% missing data to capture recent IPOs (like ADNOC LS)
+# Or just ensure we have *some* data.
+missing_pct <- colSums(is.na(select(price_weekly, -Date))) / nrow(price_weekly)
+valid_tickers <- names(missing_pct[missing_pct < 0.60]) 
+
+# If valid_tickers is empty, force keep the top 50 by market cap
+if(length(valid_tickers) < 5) {
+  print("Warning: Strict filtering removed too many stocks. Selecting top stocks by Market Cap instead.")
+  top_stocks <- sector_mapping_filtered %>% 
+    arrange(desc(Market_Cap_Num)) %>% 
+    head(50) %>% 
+    pull(Ticker)
+  valid_tickers <- intersect(names(price_weekly), top_stocks)
+}
+
+price_final <- price_weekly %>%
   select(Date, all_of(valid_tickers))
 
-print(paste("\nCompanies after filtering:", length(valid_tickers)))
-print(paste(
-  "Date range:",
-  min(price_df_final$Date),
-  "to",
-  max(price_df_final$Date)
-))
-print(paste("Observations:", nrow(price_df_final)))
+print(paste("Frequency: WEEKLY"))
+print(paste("Valid Tickers Remaining:", length(valid_tickers)))
+print(paste("Observations:", nrow(price_final)))
 
-# Update sector mapping
+# Update sector mapping to match valid tickers
 sector_mapping_final <- sector_mapping_filtered %>%
   filter(Ticker %in% valid_tickers)
 
-print("\nFinal distribution by sector:")
-print(table(sector_mapping_final$Sector_Group))
-
-print("\nFinal distribution by country:")
-print(table(sector_mapping_final$Cntry_Terrtry_Fl_Name))
-
 # ==============================================================================
-# STEP 7: Calculate Returns
+# STEP 7: Calculate Returns (Weekly)
 # ==============================================================================
 
-returns_df <- price_df_final %>%
+returns_df <- price_final %>%
   arrange(Date) %>%
-  mutate(across(-Date, ~ c(NA, diff(log(.))))) # Log returns
-
-# Remove first row
-returns_df <- returns_df[-1, ]
-
-# Handle any infinite values
-returns_df <- returns_df %>%
-  mutate(across(-Date, ~ ifelse(is.infinite(.), NA, .)))
-
-# Fill NAs using last observation carried forward
-returns_df <- returns_df %>%
-  mutate(across(-Date, ~ zoo::na.locf(., na.rm = FALSE)))
-
-# Remove remaining NAs
-returns_df <- na.omit(returns_df)
-
-print("\nReturns data:")
-print(paste("Dimensions:", nrow(returns_df), "x", ncol(returns_df)))
+  mutate(across(-Date, ~ c(NA, diff(log(.))))) %>% # Log returns
+  slice(-1) %>%
+  mutate(across(-Date, ~ ifelse(is.infinite(.), NA, .))) %>%
+  # Zero fill remaining NAs (e.g., if stock didn't exist yet, return is 0)
+  # This is necessary for Black-Litterman covariance matrix
+  mutate(across(-Date, ~ replace_na(., 0))) 
 
 # ==============================================================================
 # STEP 8: Create Market-Cap Weighted Sector Indices
 # ==============================================================================
 
-# Convert to long format and join with sector information
 returns_long <- returns_df %>%
   pivot_longer(-Date, names_to = "Ticker", values_to = "Return") %>%
-  left_join(
-    sector_mapping_final %>%
-      select(
-        Ticker,
-        Sector_Group,
-        Market_Cap_Num,
-        Name,
-        Cntry_Terrtry_Fl_Name,
-        GICS_SubInd_Name
-      ),
-    by = "Ticker"
-  ) %>%
-  filter(
-    !is.na(Return),
-    !is.na(Sector_Group),
-    !is.na(Market_Cap_Num),
-    Market_Cap_Num > 0
-  )
+  left_join(sector_mapping_final %>% select(Ticker, Sector_Group, Market_Cap_Num), by = "Ticker") %>%
+  filter(!is.na(Sector_Group), Market_Cap_Num > 0) # Removed !is.na(Return) to keep 0s
 
-print(paste("  Total observations:", nrow(returns_long)))
-print(paste("  Unique dates:", length(unique(returns_long$Date))))
-print(paste("  Unique tickers:", length(unique(returns_long$Ticker))))
-
-# Calculate market-cap weighted sector indices
-# Market_Cap_Num is ALREADY in returns_long, no need for another join!
 sector_indices <- returns_long %>%
   group_by(Date, Sector_Group) %>%
   summarise(
-    # Market-cap weighted return
     IndexReturn = weighted.mean(Return, w = Market_Cap_Num, na.rm = TRUE),
-    # Alternative manual calculation (same result):
-    # IndexReturn = sum(Return * Market_Cap_Num, na.rm = TRUE) / sum(Market_Cap_Num, na.rm = TRUE),
-    NumCompanies = n(),
-    TotalMarketCap = sum(Market_Cap_Num, na.rm = TRUE),
+    TotalMarketCap = sum(Market_Cap_Num, na.rm = TRUE), 
     .groups = 'drop'
   )
 
-print("\nSector indices summary:")
-sector_summary <- sector_indices %>%
-  group_by(Sector_Group) %>%
-  summarise(
-    AvgReturn = mean(IndexReturn, na.rm = TRUE),
-    StdDev = sd(IndexReturn, na.rm = TRUE),
-    NumObs = n(),
-    AvgNumCompanies = mean(NumCompanies),
-    AvgMarketCapBn = mean(TotalMarketCap) / 1e9,
-    .groups = 'drop'
-  )
-print(sector_summary)
-
-# Convert to wide format
+# Convert to xts for Black-Litterman
 returns_wide <- sector_indices %>%
   select(Date, Sector_Group, IndexReturn) %>%
   pivot_wider(names_from = Sector_Group, values_from = IndexReturn) %>%
   arrange(Date)
 
+# Check for NAs in sectors and fill with 0 (flat week)
+returns_wide[is.na(returns_wide)] <- 0
 
-# Convert to xts
-dates_vec <- returns_wide$Date
-returns_matrix <- returns_wide %>% select(-Date)
-returns_xts <- xts(returns_matrix, order.by = dates_vec)
-
-# Clean data
-returns_xts <- na.omit(returns_xts)
-
-print(paste("Dimensions:", nrow(returns_xts), "x", ncol(returns_xts)))
-print(paste(
-  "Date range:",
-  min(index(returns_xts)),
-  "to",
-  max(index(returns_xts))
-))
-
-# Verify no NAs remain
-if (any(is.na(returns_xts))) {
-  warning("WARNING: NAs still present in returns_xts")
-  print(colSums(is.na(returns_xts)))
-}
+returns_xts <- xts(returns_wide[,-1], order.by = returns_wide$Date)
 
 # ==============================================================================
-# STEP 9: Calculate Statistics for Black-Litterman
+# STEP 9: Market Statistics (Prior) with Robust Covariance (Corpcor)
 # ==============================================================================
 
-# Determine frequency
-date_diff <- as.numeric(diff(index(returns_xts)))
-avg_diff <- median(date_diff, na.rm = TRUE)
+# Install lightweight shrinkage package
+if(!require("corpcor")) install.packages("corpcor")
+library(corpcor)
 
-if (avg_diff <= 2) {
-  freq <- 252
-  freq_name <- "Daily"
-} else if (avg_diff <= 10) {
-  freq <- 52
-  freq_name <- "Weekly"
-} else {
-  freq <- 12
-  freq_name <- "Monthly"
-}
+freq <- 52 # Weekly frequency
 
-print(paste("\nData frequency:", freq_name))
-print(paste("Average days between observations:", round(avg_diff, 1)))
+# 1. Historical Returns (Mu)
+mu_hist <- colMeans(returns_xts) * freq
 
-# Annualized statistics
-mu_hist <- colMeans(returns_xts, na.rm = TRUE) * freq
-Sigma <- cov(returns_xts, use = "complete.obs") * freq
+# 2. Robust Covariance (Ledoit-Wolf Shrinkage via Corpcor)
+# This estimates the covariance matrix by shrinking towards constant correlation
+# It is extremely fast and stable
+Sigma_shrink <- cov.shrink(returns_xts, verbose = FALSE) 
 
-# Market-cap based weights
-sector_market_caps <- sector_indices %>%
+# Convert to standard matrix and annualize
+Sigma <- as.matrix(Sigma_shrink) * freq
+
+# Ensure column names are preserved
+colnames(Sigma) <- colnames(returns_xts)
+rownames(Sigma) <- colnames(returns_xts)
+
+# 3. Calculate Market Weights
+sector_mcap <- sector_indices %>%
   group_by(Sector_Group) %>%
-  summarise(
-    TotalMarketCap = mean(TotalMarketCap, na.rm = TRUE),
-    .groups = 'drop'
-  ) %>%
-  arrange(match(Sector_Group, colnames(returns_xts)))
+  summarise(MCap = mean(TotalMarketCap, na.rm = TRUE)) 
 
-w_mkt <- sector_market_caps$TotalMarketCap /
-  sum(sector_market_caps$TotalMarketCap)
-names(w_mkt) <- colnames(returns_xts)
+w_mkt <- setNames(sector_mcap$MCap / sum(sector_mcap$MCap), sector_mcap$Sector_Group)
+w_mkt <- w_mkt[colnames(returns_xts)] # Ensure order matches
 
-# Risk aversion parameter
+# 4. Risk Aversion & Implied Equilibrium
 lambda <- 2.5
-
-# Implied equilibrium returns
 Pi <- as.vector(lambda * Sigma %*% w_mkt)
 names(Pi) <- colnames(returns_xts)
 
-cat("\n", rep("=", 90), "\n", sep = "")
-cat("MARKET STATISTICS\n")
-cat(rep("=", 90), "\n", sep = "")
-print(data.frame(
-  Sector = names(mu_hist),
-  Historical_Return_Pct = round(mu_hist * 100, 2),
-  Volatility_Pct = round(sqrt(diag(Sigma)) * 100, 2),
-  Market_Weight_Pct = round(w_mkt * 100, 2),
-  Market_Cap_Bn = round(sector_market_caps$TotalMarketCap / 1e9, 2),
-  Equilibrium_Return_Pct = round(Pi * 100, 2)
-))
-cat(rep("=", 90), "\n", sep = "")
+cat("\n--- Implied Equilibrium Returns (Pi) ---\n")
+print(round(Pi * 100, 2))
 
-# ======================================================================
-# STEP 10: Black-Litterman ABSOLUTE Views: q = Pi + alpha
-# ======================================================================
+# ==============================================================================
+# STEP 10: Black-Litterman ABSOLUTE Views
+# ==============================================================================
 
 sectors <- colnames(returns_xts)
 n_sectors <- length(sectors)
 
-# Your alphas (excess return over equilibrium), in decimals
-alpha <- c(
-  "Insurance" = 0.03,
-  "AI" = 0.02,
-  "Healthcare" = 0.015,
-  "Consumer Discretionary" = 0.015,
-  "Banks" = 0.005
+# Absolute Return Views (Annualized)
+view_returns <- c(
+  "Insurance" = 0.15,    
+  "Logistics" = 0.13,    
+  "AI" = 0.11,
+  "Healthcare" = 0.085,
+  "Consumer Discretionary" = 0.10,
+  "Banks" = 0.09
 )
 
-# Build views only for sectors present
-view_sectors <- intersect(names(alpha), sectors)
-n_views <- length(view_sectors)
+# Filter views
+valid_views <- intersect(names(view_returns), sectors)
+view_returns <- view_returns[valid_views]
+n_views <- length(valid_views)
 
+# Build P Matrix
 P <- matrix(0, nrow = n_views, ncol = n_sectors)
 colnames(P) <- sectors
-rownames(P) <- paste0("Abs view: ", view_sectors)
+rownames(P) <- valid_views
 
-# Q is absolute expected return for that sector: Pi + alpha
-Q <- numeric(n_views)
-
-for (i in seq_along(view_sectors)) {
-  s <- view_sectors[i]
-  P[i, ] <- ifelse(sectors == s, 1, 0)
-  Q[i] <- Pi[s] + alpha[s] # <-- this is q = π + alpha
+for(i in seq_along(valid_views)) {
+  P[i, valid_views[i]] <- 1
 }
 
-print(P)
-print(data.frame(
-  View = view_sectors,
-  Pi = Pi[view_sectors],
-  Alpha = alpha[view_sectors],
-  Q = Q
-))
+# Build Q Vector
+Q <- as.numeric(view_returns)
 
-# ----------------------
-# View uncertainty Omega
-# ----------------------
-# Use index vol to scale uncertainty (confidence)
-vol <- sqrt(diag(Sigma)) # annualized vol of each sector index
-
-# Choose k per view: smaller k = more confident
-k <- c(
-  "Insurance" = 0.4, # high confidence
-  "AI" = 0.6, # medium
-  "Healthcare" = 0.6, # medium
-  "Consumer Discretionary" = 0.6, # medium
-  "Banks" = 0.9 # lower confidence
-)
-
-k_used <- k[view_sectors]
-omega_diag <- (k_used * vol[view_sectors])^2
-Omega <- diag(omega_diag)
-rownames(Omega) <- colnames(Omega) <- rownames(P)
-
-
-# ==============================================================================
-# STEP 11: Black-Litterman Posterior Returns
-# ==============================================================================
+# Build Omega (Uncertainty)
 tau <- 0.025
+view_conf <- c( # Lower number = Higher confidence
+  "Insurance" = 0.6, "Logistics" = 0.4, "AI" = 0.8,
+  "Healthcare" = 0.6, "Consumer Discretionary" = 0.6, "Banks" = 0.5
+)
+# Ensure view_conf matches valid_views
+conf_vec <- view_conf[valid_views]
+# Use heuristics if sector missing from conf vector
+conf_vec[is.na(conf_vec)] <- 0.8 
+
+omega_diag <- (conf_vec * sqrt(diag(Sigma))[valid_views])^2
+Omega <- diag(omega_diag)
+
+# ==============================================================================
+# STEP 11: Posterior Calculation
+# ==============================================================================
 
 inv_tau_Sigma <- solve(tau * Sigma)
 inv_Omega <- solve(Omega)
-
-posterior_precision <- inv_tau_Sigma + t(P) %*% inv_Omega %*% P
-posterior_Sigma <- solve(posterior_precision)
-posterior_mu <- as.vector(
-  posterior_Sigma %*%
-    (inv_tau_Sigma %*% Pi + t(P) %*% inv_Omega %*% Q)
-)
+posterior_Sigma <- solve(inv_tau_Sigma + t(P) %*% inv_Omega %*% P)
+posterior_mu <- as.vector(posterior_Sigma %*% (inv_tau_Sigma %*% Pi + t(P) %*% inv_Omega %*% Q))
 names(posterior_mu) <- sectors
 
-cat("\n", rep("=", 90), "\n", sep = "")
-cat("BLACK-LITTERMAN POSTERIOR RETURNS\n")
-cat(rep("=", 90), "\n", sep = "")
-print(data.frame(
-  Sector = sectors,
-  Equilibrium_Pct = round(Pi * 100, 2),
-  Posterior_Pct = round(posterior_mu * 100, 2),
-  Change_Pct = round((posterior_mu - Pi) * 100, 2)
-))
-cat(rep("=", 90), "\n", sep = "")
-
 # ==============================================================================
-# STEP 12: Portfolio Optimization
+# STEP 12: Optimization
 # ==============================================================================
 
-target_return <- mean(posterior_mu)
-n <- length(posterior_mu)
+Amat <- cbind(rep(1, n_sectors), diag(n_sectors))
+bvec <- c(1, rep(0, n_sectors))
 
-Amat <- cbind(
-  rep(1, n), # weights sum to 1
-  posterior_mu, # return constraint
-  diag(n) # no short selling
-)
-
-bvec <- c(1, target_return, rep(0, n))
-
+# Maximize: mu*w - (lambda/2)*w*S*w
 solution <- solve.QP(
-  Dmat = 2 * posterior_Sigma,
-  dvec = rep(0, n),
+  Dmat = 2 * (lambda * posterior_Sigma), 
+  dvec = posterior_mu,                   
   Amat = Amat,
   bvec = bvec,
   meq = 1
@@ -561,283 +453,33 @@ optimal_weights <- solution$solution
 names(optimal_weights) <- sectors
 
 # ==============================================================================
-# STEP 13: Results Summary
+# STEP 13 & 15: Summary & Plot
 # ==============================================================================
 
-results_summary <- data.frame(
+results <- data.frame(
   Sector = sectors,
-  Num_Companies = as.vector(table(sector_mapping_final$Sector_Group)[sectors]),
-  Market_Cap_Bn = round(sector_market_caps$TotalMarketCap / 1e9, 2),
-  Historical_Return_Pct = round(mu_hist * 100, 2),
-  Volatility_Pct = round(sqrt(diag(Sigma)) * 100, 2),
-  Equilibrium_Return_Pct = round(Pi * 100, 2),
-  Posterior_Return_Pct = round(posterior_mu * 100, 2),
-  Market_Weight_Pct = round(w_mkt * 100, 2),
-  Optimal_Weight_Pct = round(optimal_weights * 100, 2),
-  Weight_Change_Pct = round((optimal_weights - w_mkt) * 100, 2)
-) %>%
-  mutate(
-    Sharpe_Ratio = round(Posterior_Return_Pct / Volatility_Pct, 3),
-    Return_Contribution_Pct = round(
-      Optimal_Weight_Pct * Posterior_Return_Pct / 100,
-      2
-    )
-  )
-
-cat("\n", rep("=", 100), "\n", sep = "")
-cat("BLACK-LITTERMAN OPTIMIZATION RESULTS\n")
-cat(rep("=", 100), "\n", sep = "")
-print(results_summary)
-cat(rep("=", 100), "\n", sep = "")
-
-# ==============================================================================
-# STEP 14: Stock Selection Within Sectors
-# ==============================================================================
-
-stock_allocation <- sector_mapping_final %>%
-  select(
-    Ticker,
-    Name,
-    Sector_Group,
-    Cntry_Terrtry_Fl_Name,
-    Market_Cap_Num,
-    GICS_SubInd_Name
-  ) %>%
-  left_join(
-    results_summary %>% select(Sector, Optimal_Weight_Pct),
-    by = c("Sector_Group" = "Sector")
-  ) %>%
-  # Market-cap weight within each sector
-  group_by(Sector_Group) %>%
-  mutate(
-    Sector_Total_MCap = sum(Market_Cap_Num, na.rm = TRUE),
-    Weight_In_Sector = Market_Cap_Num / Sector_Total_MCap,
-    Stock_Weight_Pct = (Optimal_Weight_Pct / 100) * Weight_In_Sector * 100,
-    Market_Cap_Bn = round(Market_Cap_Num / 1e9, 2)
-  ) %>%
-  ungroup() %>%
-  arrange(desc(Stock_Weight_Pct)) %>%
-  select(
-    Ticker,
-    Name,
-    Sector_Group,
-    Cntry_Terrtry_Fl_Name,
-    GICS_SubInd_Name,
-    Market_Cap_Bn,
-    Stock_Weight_Pct
-  )
-
-cat("\n", rep("=", 100), "\n", sep = "")
-cat("TOP 20 STOCK ALLOCATIONS\n")
-cat(rep("=", 100), "\n", sep = "")
-print(stock_allocation %>% head(20))
-cat(rep("=", 100), "\n", sep = "")
-
-# ==============================================================================
-# STEP 15: Visualizations
-# ==============================================================================
-
-library(ggplot2)
-
-# 1. Weight comparison
-p1 <- results_summary %>%
-  select(Sector, Market_Weight_Pct, Optimal_Weight_Pct) %>%
-  pivot_longer(-Sector, names_to = "Type", values_to = "Weight") %>%
-  mutate(
-    Type = recode(
-      Type,
-      Market_Weight_Pct = "Market Weight",
-      Optimal_Weight_Pct = "Optimal Weight"
-    )
-  ) %>%
-  ggplot(aes(x = Sector, y = Weight, fill = Type)) +
-  geom_bar(stat = "identity", position = "dodge", width = 0.7) +
-  geom_text(
-    aes(label = paste0(round(Weight, 1), "%")),
-    position = position_dodge(width = 0.7),
-    vjust = -0.5,
-    size = 3
-  ) +
-  theme_minimal() +
-  labs(
-    title = "Market vs. Optimal Portfolio Weights",
-    subtitle = "Black-Litterman Model - Middle East Investment Strategy",
-    y = "Weight (%)",
-    x = "",
-    fill = ""
-  ) +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    legend.position = "top"
-  )
-
-print(p1)
-
-# 2. Returns comparison
-p2 <- results_summary %>%
-  select(
-    Sector,
-    Historical_Return_Pct,
-    Equilibrium_Return_Pct,
-    Posterior_Return_Pct
-  ) %>%
-  pivot_longer(-Sector, names_to = "Type", values_to = "Return") %>%
-  mutate(
-    Type = recode(
-      Type,
-      Historical_Return_Pct = "Historical",
-      Equilibrium_Return_Pct = "Equilibrium",
-      Posterior_Return_Pct = "BL Posterior"
-    )
-  ) %>%
-  ggplot(aes(x = Sector, y = Return, fill = Type)) +
-  geom_bar(stat = "identity", position = "dodge", width = 0.7) +
-  theme_minimal() +
-  labs(
-    title = "Expected Returns Comparison",
-    subtitle = "Historical vs. Equilibrium vs. Black-Litterman Posterior",
-    y = "Annualized Return (%)",
-    x = "",
-    fill = ""
-  ) +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    legend.position = "top"
-  )
-
-print(p2)
-
-# 3. Risk-Return scatter
-p3 <- results_summary %>%
-  ggplot(aes(
-    x = Volatility_Pct,
-    y = Posterior_Return_Pct,
-    size = Optimal_Weight_Pct,
-    color = Sector,
-    label = Sector
-  )) +
-  geom_point(alpha = 0.7) +
-  geom_text(vjust = -1, size = 3) +
-  theme_minimal() +
-  labs(
-    title = "Risk-Return Profile with Optimal Weights",
-    subtitle = "Bubble size represents optimal portfolio weight",
-    x = "Volatility (% p.a.)",
-    y = "Expected Return (% p.a.)",
-    size = "Weight (%)",
-    color = "Sector"
-  ) +
-  theme(legend.position = "right")
-
-print(p3)
-
-# 4. Correlation matrix
-corrplot(
-  cor(returns_xts),
-  method = "color",
-  type = "upper",
-  addCoef.col = "black",
-  number.cex = 0.8,
-  tl.col = "black",
-  tl.srt = 45,
-  title = "Sector Correlation Matrix",
-  mar = c(0, 0, 2, 0)
+  Market_Weight = round(w_mkt * 100, 1),
+  Optimal_Weight = round(optimal_weights * 100, 1),
+  Equilibrium_Ret = round(Pi * 100, 1),
+  Posterior_Ret = round(posterior_mu * 100, 1)
 )
 
-# 5. Stock allocation by sector
-p5 <- stock_allocation %>%
-  ggplot(aes(
-    x = reorder(Sector_Group, -Stock_Weight_Pct),
-    y = Stock_Weight_Pct,
-    fill = Cntry_Terrtry_Fl_Name
-  )) +
-  geom_bar(stat = "identity") +
+print("--- Final Results ---")
+print(results)
+
+# Define Colors
+sector_colors <- c(
+  "Banks" = "#1f77b4", "Insurance" = "#00cccc", "Logistics" = "#ff7f0e",
+  "AI" = "#9467bd", "Healthcare" = "#2ca02c", "Consumer Discretionary" = "#d62728"
+)
+
+# Plot
+results %>%
+  pivot_longer(c(Market_Weight, Optimal_Weight), names_to = "Type", values_to = "Weight") %>%
+  ggplot(aes(x = Sector, y = Weight, fill = Sector)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_wrap(~Type) +
+  scale_fill_manual(values = sector_colors) +
   theme_minimal() +
-  labs(
-    title = "Stock Allocation by Sector and Country",
-    x = "Sector",
-    y = "Portfolio Weight (%)",
-    fill = "Country"
-  ) +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    legend.position = "top"
-  )
-
-print(p5)
-
-# ==============================================================================
-# STEP 16: Export Results
-# ==============================================================================
-
-export_list <- list(
-  "1_Summary" = results_summary,
-  "2_Stock_Allocation" = stock_allocation,
-  "3_Sector_Returns" = as.data.frame(returns_xts) %>%
-    rownames_to_column("Date") %>%
-    mutate(Date = as.Date(Date)),
-  "4_Company_Details" = sector_mapping_final %>%
-    select(
-      Ticker,
-      Name,
-      Sector_Group,
-      Cntry_Terrtry_Fl_Name,
-      GICS_SubInd_Name,
-      Market_Cap_Num
-    ),
-  "5_Correlation" = round(cor(returns_xts), 3),
-  "6_Views" = data.frame(View = view_names, Expected_Return_Pct = Q * 100),
-  "7_Country_Allocation" = stock_allocation %>%
-    group_by(Cntry_Terrtry_Fl_Name) %>%
-    summarise(
-      Total_Weight_Pct = sum(Stock_Weight_Pct),
-      Num_Companies = n(),
-      .groups = 'drop'
-    ) %>%
-    arrange(desc(Total_Weight_Pct))
-)
-
-# Also save as CSV for easy viewing
-write.csv(results_summary, "sector_allocation_summary.csv", row.names = FALSE)
-write.csv(stock_allocation, "stock_allocation_detailed.csv", row.names = FALSE)
-
-cat("\n", rep("=", 100), "\n", sep = "")
-cat("RESULTS EXPORTED\n")
-cat(rep("=", 100), "\n", sep = "")
-cat("✓ Excel file: BlackLitterman_Middle_East_Results.xlsx\n")
-cat(
-  "✓ CSV files: sector_allocation_summary.csv, stock_allocation_detailed.csv\n"
-)
-cat(rep("=", 100), "\n", sep = "")
-
-# ==============================================================================
-# STEP 17: Portfolio Performance Metrics
-# ==============================================================================
-
-portfolio_return <- sum(optimal_weights * posterior_mu)
-portfolio_sd <- sqrt(as.numeric(
-  t(optimal_weights) %*% posterior_Sigma %*% optimal_weights
-))
-sharpe <- portfolio_return / portfolio_sd
-
-# Calculate diversification ratio
-weighted_vol <- sum(optimal_weights * sqrt(diag(Sigma)))
-diversification_ratio <- weighted_vol / portfolio_sd
-
-cat("\n", rep("=", 100), "\n", sep = "")
-cat("PORTFOLIO PERFORMANCE METRICS\n")
-cat(rep("=", 100), "\n", sep = "")
-cat(sprintf("Expected Annual Return:       %.2f%%\n", portfolio_return * 100))
-cat(sprintf("Expected Annual Volatility:   %.2f%%\n", portfolio_sd * 100))
-cat(sprintf("Expected Sharpe Ratio:        %.2f\n", sharpe))
-cat(sprintf("Diversification Ratio:        %.2f\n", diversification_ratio))
-cat(sprintf("\nNumber of Stocks:             %d\n", nrow(stock_allocation)))
-cat(sprintf(
-  "Target Sectors:               %s\n",
-  paste(target_sectors, collapse = ", ")
-))
-cat(sprintf(
-  "Countries:                    %s\n",
-  paste(unique(stock_allocation$Cntry_Terrtry_Fl_Name), collapse = ", ")
-))
-cat(rep("=", 100), "\n", sep = "")
+  labs(title = "BL Optimization: Weekly Data & Absolute Views", y = "Weight %") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
