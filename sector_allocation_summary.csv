@@ -1,0 +1,6 @@
+"Sector","Num_Companies","Market_Cap_Bn","Historical_Return_Pct","Volatility_Pct","Equilibrium_Return_Pct","Posterior_Return_Pct","Market_Weight_Pct","Optimal_Weight_Pct","Weight_Change_Pct","Sharpe_Ratio","Return_Contribution_Pct"
+"AI",4,19.18,9.11,21.14,2.86,3.25,2.98,3.34,0.36,0.154,0.11
+"Banks",37,576.82,19.2,11.79,3.35,3.56,89.61,54.89,-34.72,0.302,1.95
+"Consumer Discretionary",8,10.09,10.3,18.58,2.4,2.75,1.57,8.66,7.09,0.148,0.24
+"Healthcare",10,13.37,17.39,17.29,2.51,2.87,2.08,8.69,6.61,0.166,0.25
+"Insurance",58,24.23,12.85,15.22,2.21,2.69,3.76,24.42,20.66,0.177,0.66

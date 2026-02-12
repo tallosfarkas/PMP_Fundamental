@@ -786,7 +786,12 @@ export_list <- list(
       Market_Cap_Num
     ),
   "5_Correlation" = round(cor(returns_xts), 3),
-  "6_Views" = data.frame(View = view_names, Expected_Return_Pct = Q * 100),
+  "6_Views" = data.frame(
+    View = view_sectors,
+    Equilibrium_Return_Pct = Pi[view_sectors] * 100,
+    Alpha_Pct = alpha[view_sectors] * 100,
+    Posterior_View_Q_Pct = Q * 100
+  ),
   "7_Country_Allocation" = stock_allocation %>%
     group_by(Cntry_Terrtry_Fl_Name) %>%
     summarise(
