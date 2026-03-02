@@ -316,6 +316,52 @@ print(paste("Observations:", nrow(price_final)))
 sector_mapping_final <- sector_mapping_filtered %>%
   filter(Ticker %in% valid_tickers)
 
+# --------------------------------------------------------------------------
+# FIX: Ensure Sector_Group is present in sector_mapping_final
+# (prevents "Unknown or uninitialised column: Sector_Group")
+# --------------------------------------------------------------------------
+if (!"Sector_Group" %in% names(sector_mapping_final)) {
+  ai_subinds <- c(
+    "Electric Utilities",
+    "Independent Power Producers & Energy Traders",
+    "Renewable Electricity",
+    "Electrical Components & Equipment",
+    "Electrical Equipment & Instruments",
+    "Electronic Equipment & Instruments",
+    "Electronic Equipment, Instruments & Components",
+    "Application Software"
+  )
+
+  logistics_pattern <- "Logistics|Marine|Freight|Trucking|Airport|Rail|Transport|Shipping|Ports|Storage"
+
+  sector_mapping_final <- sector_mapping_final %>%
+    mutate(
+      Sector_Group = case_when(
+        GICS_SubInd_Name %in% ai_subinds ~ "AI",
+        str_detect(
+          GICS_SubInd_Name,
+          regex(logistics_pattern, ignore_case = TRUE)
+        ) ~ "Logistics",
+        str_detect(
+          GICS_SubInd_Name,
+          "Insurance|Reinsurance|Insurance Brokers"
+        ) ~ "Insurance",
+        str_detect(GICS_SubInd_Name, "Banks") ~ "Banks",
+        str_detect(GICS_Sector, "Health") ~ "Healthcare",
+        str_detect(
+          GICS_Sector,
+          "Consumer Discretionary"
+        ) ~ "Consumer Discretionary",
+        TRUE ~ "Other"
+      )
+    )
+}
+
+# Sanity check (optional)
+print("Sector_Group present?")
+print("Sector_Group" %in% names(sector_mapping_final))
+print(table(sector_mapping_final$Sector_Group))
+
 # ==============================================================================
 # STEP 7: Calculate Returns (Weekly)
 # ==============================================================================
@@ -656,3 +702,343 @@ results %>%
 
 # Logistics bucket is 4 stocks, all Oil & Gas Storage & Transportation. Hence, is more
 # “midstream/shipping energy logistics” than broad logistics.
+
+# =========================
+# HARD SCREENS + SECTOR-AWARE SCORING & RANKING
+# =========================
+
+# --- helpers ---
+num <- function(x) readr::parse_number(as.character(x))
+
+# Convert "percent-like" ratios (e.g., 95, 127, 283) to ratio units (0.95, 1.27, 2.83)
+# Works for Debt/Assets and Loan/Deposit fields in your data.
+as_ratio01 <- function(x) {
+  x <- as.numeric(x)
+  ifelse(is.finite(x) & x > 2, x / 100, x)
+}
+
+# Ensure percent fields are in 0..100 scale
+# If already 0..100 it stays; if 0..1 it becomes 0..100
+as_pct100 <- function(x) {
+  x <- as.numeric(x)
+  ifelse(is.finite(x) & x > 0 & x <= 1, x * 100, x)
+}
+
+# Robust z-score: never returns NA; if too few data points/zero variance => neutral (0)
+z_safe <- function(x) {
+  x <- as.numeric(x)
+  ok <- is.finite(x)
+  if (sum(ok) < 2) {
+    return(rep(0, length(x)))
+  }
+  s <- sd(x[ok])
+  if (!is.finite(s) || s == 0) {
+    return(rep(0, length(x)))
+  }
+  out <- rep(0, length(x))
+  out[ok] <- (x[ok] - mean(x[ok])) / s
+  out
+}
+
+# -------------------------
+# 1) HARD SCREEN PARAMETERS
+# -------------------------
+# Investability (keep "hard")
+min_liquidity_value <- 1e6 # Avg $ value traded (20D)
+min_free_float_pct <- 10 # %
+
+# Non-financial red flags (relaxed to avoid wiping sectors; tune later)
+max_netdebt_ebitda <- 10
+min_int_cov <- 1.0
+
+# Debt/Assets is percent-like in your file -> after as_ratio01 it becomes ratio
+max_debt_assets_nf <- 1.50 # 150% debt/assets hard red flag for non-financials
+max_debt_assets_ins <- 2.00 # insurance often looks higher; keep slightly looser
+
+# Banks
+banks_max_npl_pct <- 15 # NPL in percent (many are NA; we only filter when present)
+banks_min_cet1_buffer <- -5 # buffer definition varies; allow slightly negative
+banks_max_loan_deposit <- 1.30 # Loan/Deposit ratio (after conversion)
+
+# Insurance
+ins_max_fin_lev <- 30
+
+# Optional: tail-based screen for Debt/Assets within sector (less brittle than hard cutoff)
+use_debt_assets_quantile <- FALSE
+debt_assets_q <- 0.95 # if enabled, drop worst 5% within each sector (only on non-NA)
+
+# -----------------------------------
+# 2) BUILD A CLEAN FUNDAMENTAL TABLE
+# -----------------------------------
+funda_base <- sector_mapping_final %>%
+  mutate(
+    Sector_Group = Sector_Group,
+    MarketCap = num(Market_Cap),
+
+    # investability
+    Liquidity = num(`Avg_D_Val_Traded_20D:D-20`),
+    FreeFloat = num(`Free_Float_%`),
+
+    # valuation / yield
+    PE = num(`P/E`),
+    PB = num(`P/B`),
+    DivY = num(`Dvd_Ind_Yld`),
+    FCFY = num(`FCF_Yld`),
+    EVEbitdaY = num(`EBITDA_/_EV_Yld_Adj`),
+
+    # profitability / growth (broad)
+    ROIC = num(`ROIC_LF`),
+    SalesG = num(`Net_Sales_-_5_Yr_Geo_Gr_LF`),
+    ROA_ROE = num(`ROA_to_ROE_LF`), # fallback for financials when ROIC missing
+
+    # margin proxy (fallback chain to avoid NA-heavy fields)
+    Margin = dplyr::coalesce(
+      num(`Operating_Margin_/_EBITDA_Margin`),
+      num(`EBITDA_to_Net_Sales:Q`),
+      num(`EBIT/Net_Sales:Y`),
+      num(`NI_Mrgn_Adj_LF`)
+    ),
+
+    # balance sheet risk (non-financials)
+    NetDebtEBITDA = num(`Net_Debt_to_EBITDA_LF`),
+    DebtAssets_raw = num(`Debt/Assets_LF`),
+    IntCov = num(`Net_Int_Cov`),
+
+    # banks
+    CET1Buf = num(`CET1_Bffr_Pct`),
+    NIM = num(`Annualized_Net_Interest_Margin`),
+    NPL_raw = num(`NPL_to_Tot_Lns`),
+    Prov = num(`Provision_for_Loan_Losses_T12M`),
+    LoanDep_raw = num(`Tot_Ln_to_Tot_Dep_LF`),
+
+    # insurance-ish
+    FinLev = num(`Finl_Lev_LF`)
+  ) %>%
+  mutate(
+    # Unit normalization
+    DebtAssets = as_ratio01(DebtAssets_raw), # 95 -> 0.95, 154 -> 1.54, etc.
+    LoanDep = as_ratio01(LoanDep_raw), # 95 -> 0.95, 127 -> 1.27, 283 -> 2.83
+    NPL = as_pct100(NPL_raw) # 0.03 -> 3, 7 stays 7
+  )
+
+# -----------------------------------
+# 3) INVESTABILITY SCREENS (HARD)
+# -----------------------------------
+funda_investable <- funda_base %>%
+  filter(is.na(Liquidity) | Liquidity >= min_liquidity_value) %>%
+  filter(is.na(FreeFloat) | FreeFloat >= min_free_float_pct) %>%
+  filter(is.na(MarketCap) | MarketCap > 0)
+
+# -----------------------------------
+# 4) RED-FLAG SCREENS (SECTOR-AWARE)
+#    IMPORTANT: apply only to rows where the relevant metric is NON-NA/finite.
+#    Also: if a red-flag filter wipes a whole sector, revert to investable names for that sector.
+# -----------------------------------
+# -----------------------------------
+# 4) RED-FLAG SCREENS (sector-aware)  ✅ FIXED FOR group_modify
+# -----------------------------------
+
+apply_redflags <- function(df, key) {
+  sec <- key$Sector_Group # <-- FIX: get group name from key (.y), not df
+
+  out <- df
+
+  if (sec %in% c("AI", "Logistics", "Healthcare", "Consumer Discretionary")) {
+    debt_cut <- max_debt_assets_nf
+    if (use_debt_assets_quantile) {
+      da_ok <- is.finite(out$DebtAssets)
+      if (sum(da_ok) >= 5) {
+        debt_cut <- stats::quantile(
+          out$DebtAssets[da_ok],
+          debt_assets_q,
+          na.rm = TRUE
+        )
+      }
+    }
+
+    out <- out %>%
+      filter(
+        (!is.finite(NetDebtEBITDA) | NetDebtEBITDA <= max_netdebt_ebitda) &
+          (!is.finite(DebtAssets) | DebtAssets <= debt_cut) &
+          (!is.finite(IntCov) | IntCov >= min_int_cov)
+      )
+  } else if (sec == "Banks") {
+    out <- out %>%
+      filter(
+        (!is.finite(NPL) | NPL <= banks_max_npl_pct) &
+          (!is.finite(CET1Buf) | CET1Buf >= banks_min_cet1_buffer) &
+          (!is.finite(LoanDep) | LoanDep <= banks_max_loan_deposit)
+      )
+  } else if (sec == "Insurance") {
+    out <- out %>%
+      filter(
+        (!is.finite(DebtAssets) | DebtAssets <= max_debt_assets_ins) &
+          (!is.finite(FinLev) | FinLev <= ins_max_fin_lev)
+      )
+  }
+
+  # safeguard: if wiped out, revert to pre-filtered df for this sector
+  if (nrow(out) == 0) df else out
+}
+
+funda_screened <- funda_investable %>%
+  group_by(Sector_Group) %>%
+  group_modify(apply_redflags) %>% # <-- FIX: pass function directly
+  ungroup()
+
+cat(
+  "\n--- Survivors after screens (investability + red flags w/ safeguard) ---\n"
+)
+print(table(funda_screened$Sector_Group))
+
+# -----------------------------------
+# 5) SCORE & RANK WITH SECTOR METRICS
+# -----------------------------------
+funda_scored <- funda_screened %>%
+  mutate(Profitability = dplyr::coalesce(ROIC, ROA_ROE)) %>%
+  group_by(Sector_Group) %>%
+  mutate(
+    # robust z-scores
+    z_Prof = z_safe(Profitability),
+    z_Margin = z_safe(Margin),
+    z_FCFY = z_safe(FCFY),
+    z_EVy = z_safe(EVEbitdaY),
+    z_PE = z_safe(PE),
+    z_PB = -z_safe(PB), # lower P/B better
+    z_DivY = z_safe(DivY),
+    z_Growth = z_safe(SalesG),
+
+    z_Lev_nf = -z_safe(NetDebtEBITDA),
+    z_DebtA = -z_safe(DebtAssets),
+    z_IntCov = z_safe(IntCov),
+
+    z_CET1 = z_safe(CET1Buf),
+    z_NIM = z_safe(NIM),
+    z_NPL = -z_safe(NPL),
+    z_Prov = -z_safe(Prov),
+    z_LoanDep = -z_safe(LoanDep),
+
+    z_FinLev = -z_safe(FinLev),
+
+    Score = case_when(
+      Sector_Group == "Banks" ~
+        0.20 *
+        z_CET1 +
+        0.20 * z_NIM +
+        0.20 * z_NPL +
+        0.10 * z_Prov +
+        0.10 * z_LoanDep +
+        0.10 * z_PB +
+        0.10 * z_DivY,
+
+      Sector_Group == "Insurance" ~
+        0.30 *
+        z_Prof +
+        0.15 * z_Margin +
+        0.20 * z_PB +
+        0.15 * z_DivY +
+        0.10 * z_Growth +
+        0.10 * (z_DebtA + z_FinLev) / 2,
+
+      TRUE ~
+        0.30 *
+        ((z_Prof + z_Margin) / 2) +
+        0.30 * ((z_FCFY + z_EVy - z_PE) / 3) +
+        0.20 * z_Growth +
+        0.20 * z_Lev_nf
+    ),
+
+    Rank_in_Sector = dplyr::dense_rank(dplyr::desc(Score))
+  ) %>%
+  ungroup() %>%
+  arrange(Sector_Group, Rank_in_Sector)
+
+# =========================
+# PICK EXACTLY total_stocks (3–5) WITH THRESHOLD + REDISTRIBUTION (UPDATED)
+# =========================
+
+total_stocks <- 4
+threshold <- 0.15
+temperature <- 1.0
+
+# IMPORTANT FIX: only allocate to sectors that actually have candidates after screening
+available_sectors <- intersect(sectors, unique(funda_scored$Sector_Group))
+
+sector_w <- optimal_weights[available_sectors]
+sector_w <- sector_w[sector_w > 1e-10]
+sector_w <- sector_w / sum(sector_w)
+
+# Keep only sectors above threshold; fallback to top sectors if none qualify
+keep_sectors <- names(sector_w)[sector_w > threshold]
+if (length(keep_sectors) == 0) {
+  keep_sectors <- names(sort(sector_w, decreasing = TRUE))[
+    1:min(total_stocks, length(sector_w))
+  ]
+}
+
+# Redistribute excluded sector weights proportionally among kept sectors
+sector_w_keep <- sector_w[keep_sectors]
+sector_w_keep <- sector_w_keep / sum(sector_w_keep)
+
+# Allocate stock slots per sector so total = total_stocks
+slots_raw <- sector_w_keep * total_stocks
+slots <- floor(slots_raw)
+slots[slots < 1] <- 1
+
+# Largest remainder adjustment
+while (sum(slots) < total_stocks) {
+  frac <- slots_raw - floor(slots_raw)
+  add_to <- names(which.max(frac))
+  slots[add_to] <- slots[add_to] + 1
+}
+while (sum(slots) > total_stocks) {
+  candidates <- names(slots)[slots > 1]
+  if (length(candidates) == 0) {
+    break
+  }
+  rm_from <- candidates[which.min(sector_w_keep[candidates])]
+  slots[rm_from] <- slots[rm_from] - 1
+}
+
+# Pick top N stocks per included sector
+funda_pick_base <- funda_scored %>%
+  mutate(Score_clean = ifelse(is.finite(Score), Score, NA_real_))
+
+pick_list <- lapply(names(slots), function(sec) {
+  n <- slots[[sec]]
+  df <- funda_pick_base %>%
+    filter(Sector_Group == sec) %>%
+    arrange(desc(Score_clean))
+  df %>% slice_head(n = n)
+})
+
+picks <- bind_rows(pick_list) %>%
+  mutate(Sector_Weight = sector_w_keep[Sector_Group])
+
+# Softmax weights within sector based on Score
+softmax <- function(x, temp = 1) {
+  if (all(is.na(x))) {
+    return(rep(1 / length(x), length(x)))
+  }
+  x2 <- x
+  x2[is.na(x2)] <- min(x2, na.rm = TRUE)
+  x2 <- x2 / temp
+  ex <- exp(x2 - max(x2))
+  ex / sum(ex)
+}
+
+picks <- picks %>%
+  group_by(Sector_Group) %>%
+  mutate(
+    within_sector_w = softmax(Score_clean, temp = temperature),
+    Stock_Weight = Sector_Weight * within_sector_w
+  ) %>%
+  ungroup() %>%
+  select(Sector_Group, Ticker, Name, Score, Sector_Weight, Stock_Weight) %>%
+  arrange(desc(Sector_Weight), desc(Score))
+
+print(picks)
+cat("\nIncluded sectors:", paste(names(sector_w_keep), collapse = ", "), "\n")
+cat("Slots per sector:\n")
+print(slots)
+cat("Sum stock weights:", round(sum(picks$Stock_Weight), 6), "\n")

@@ -2,8 +2,20 @@
 # PROFESSIONAL BLACK-LITTERMAN STRATEGY (GCC FOCUS)
 # ==============================================================================
 # 1. LOAD PACKAGES
-if(!require("pacman")) install.packages("pacman")
-pacman::p_load(tidyverse, readxl, zoo, xts, quadprog, PerformanceAnalytics, corrplot, corpcor, lubridate)
+if (!require("pacman")) {
+  install.packages("pacman")
+}
+pacman::p_load(
+  tidyverse,
+  readxl,
+  zoo,
+  xts,
+  quadprog,
+  PerformanceAnalytics,
+  corrplot,
+  corpcor,
+  lubridate
+)
 
 # ==============================================================================
 # STEP 1: LOAD & CLEAN PRICE DATA
@@ -17,7 +29,9 @@ convert_to_df <- function(ts_obj, ticker_name) {
   } else if (is.data.frame(ts_obj)) {
     df <- ts_obj
     if (ncol(df) >= 2) names(df)[1:2] <- c("Date", "Price")
-  } else { return(NULL) }
+  } else {
+    return(NULL)
+  }
   df$Ticker <- ticker_name
   df$Date <- as.Date(df$Date)
   return(df)
@@ -43,9 +57,9 @@ price_df_wide <- price_df_long %>%
 funda_raw <- read_xlsx("code/sector_industry_filtered_stocks.xlsx")
 
 # Clean column names
-names(funda_raw) <- names(funda_raw) %>% 
-  str_replace_all(" ", "_") %>% 
-  str_replace_all("/", "_") %>% 
+names(funda_raw) <- names(funda_raw) %>%
+  str_replace_all(" ", "_") %>%
+  str_replace_all("/", "_") %>%
   str_replace_all("-", "_") %>%
   str_replace_all("%", "Pct")
 
@@ -53,10 +67,14 @@ names(funda_raw) <- names(funda_raw) %>%
 # STEP 3: ROBUST SECTOR MAPPING
 # ==============================================================================
 ai_subinds <- c(
-  "Electric Utilities", "Independent Power Producers & Energy Traders",
-  "Renewable Electricity", "Electrical Components & Equipment",
-  "Electrical Equipment & Instruments", "Electronic Equipment & Instruments",
-  "Electronic Equipment, Instruments & Components", "Application Software"
+  "Electric Utilities",
+  "Independent Power Producers & Energy Traders",
+  "Renewable Electricity",
+  "Electrical Components & Equipment",
+  "Electrical Equipment & Instruments",
+  "Electronic Equipment & Instruments",
+  "Electronic Equipment, Instruments & Components",
+  "Application Software"
 )
 logistics_pattern <- "Logistics|Marine|Freight|Trucking|Airport|Rail|Transport|Shipping|Ports|Storage"
 
@@ -68,20 +86,37 @@ sector_mapping_clean <- funda_raw %>%
     ROIC = as.numeric(ROIC_LF),
     DivYield = as.numeric(Dvd_Ind_Yld),
     SalesGrowth = as.numeric(Net_Sales___5_Yr_Geo_Gr_LF),
-    
+
     Sector_Group = case_when(
       GICS_SubInd_Name %in% ai_subinds ~ "AI",
-      str_detect(GICS_SubInd_Name, regex(logistics_pattern, ignore_case = TRUE)) ~ "Logistics",
-      str_detect(GICS_SubInd_Name, "Insurance|Reinsurance|Insurance Brokers") ~ "Insurance",
+      str_detect(
+        GICS_SubInd_Name,
+        regex(logistics_pattern, ignore_case = TRUE)
+      ) ~ "Logistics",
+      str_detect(
+        GICS_SubInd_Name,
+        "Insurance|Reinsurance|Insurance Brokers"
+      ) ~ "Insurance",
       str_detect(GICS_SubInd_Name, "Banks") ~ "Banks",
       str_detect(GICS_Sector, "Health") ~ "Healthcare",
-      str_detect(GICS_Sector, "Consumer Discretionary") ~ "Consumer Discretionary",
+      str_detect(
+        GICS_Sector,
+        "Consumer Discretionary"
+      ) ~ "Consumer Discretionary",
       TRUE ~ "Other"
     )
   )
 
-target_sectors <- c("Banks", "Insurance", "Logistics", "AI", "Healthcare", "Consumer Discretionary")
-sector_mapping_final <- sector_mapping_clean %>% filter(Sector_Group %in% target_sectors)
+target_sectors <- c(
+  "Banks",
+  "Insurance",
+  "Logistics",
+  "AI",
+  "Healthcare",
+  "Consumer Discretionary"
+)
+sector_mapping_final <- sector_mapping_clean %>%
+  filter(Sector_Group %in% target_sectors)
 target_tickers <- sector_mapping_final$Ticker
 
 # ==============================================================================
@@ -106,15 +141,16 @@ price_weekly <- price_filled %>%
   summarise(across(everything(), last), .groups = 'drop') %>%
   select(-Date) %>%
   rename(Date = Week_End) %>%
-  slice(1:(n()-1))
+  slice(1:(n() - 1))
 
 # Filter for liquid tickers
 missing_pct <- colSums(is.na(select(price_weekly, -Date))) / nrow(price_weekly)
-valid_tickers <- names(missing_pct[missing_pct < 0.60]) 
+valid_tickers <- names(missing_pct[missing_pct < 0.60])
 price_final <- price_weekly %>% select(Date, all_of(valid_tickers))
 
 # Update mapping
-sector_mapping_final <- sector_mapping_final %>% filter(Ticker %in% valid_tickers)
+sector_mapping_final <- sector_mapping_final %>%
+  filter(Ticker %in% valid_tickers)
 
 # ==============================================================================
 # STEP 5: CALCULATE RETURNS & INDICES
@@ -127,14 +163,17 @@ returns_df <- price_final %>%
 
 returns_long <- returns_df %>%
   pivot_longer(-Date, names_to = "Ticker", values_to = "Return") %>%
-  left_join(sector_mapping_final %>% select(Ticker, Sector_Group, Market_Cap_Num), by = "Ticker") %>%
+  left_join(
+    sector_mapping_final %>% select(Ticker, Sector_Group, Market_Cap_Num),
+    by = "Ticker"
+  ) %>%
   filter(!is.na(Sector_Group), Market_Cap_Num > 0)
 
 sector_indices <- returns_long %>%
   group_by(Date, Sector_Group) %>%
   summarise(
     IndexReturn = weighted.mean(Return, w = Market_Cap_Num, na.rm = TRUE),
-    TotalMarketCap = sum(Market_Cap_Num, na.rm = TRUE), 
+    TotalMarketCap = sum(Market_Cap_Num, na.rm = TRUE),
     .groups = 'drop'
   )
 
@@ -145,12 +184,12 @@ returns_wide <- sector_indices %>%
 
 # Check for NAs (e.g. if a sector had no returns for a week)
 returns_wide[is.na(returns_wide)] <- 0
-returns_xts <- xts(returns_wide[,-1], order.by = returns_wide$Date)
+returns_xts <- xts(returns_wide[, -1], order.by = returns_wide$Date)
 
 # ==============================================================================
 # STEP 6: MARKET PRIOR (Shrinkage)
 # ==============================================================================
-freq <- 52 
+freq <- 52
 Sigma_shrink <- cov.shrink(returns_xts, verbose = FALSE)
 Sigma <- as.matrix(Sigma_shrink) * freq
 colnames(Sigma) <- rownames(Sigma) <- colnames(returns_xts)
@@ -158,8 +197,11 @@ colnames(Sigma) <- rownames(Sigma) <- colnames(returns_xts)
 # Market Weights
 sector_mcap <- sector_indices %>%
   group_by(Sector_Group) %>%
-  summarise(MCap = mean(TotalMarketCap, na.rm = TRUE)) 
-w_mkt <- setNames(sector_mcap$MCap / sum(sector_mcap$MCap), sector_mcap$Sector_Group)
+  summarise(MCap = mean(TotalMarketCap, na.rm = TRUE))
+w_mkt <- setNames(
+  sector_mcap$MCap / sum(sector_mcap$MCap),
+  sector_mcap$Sector_Group
+)
 w_mkt <- w_mkt[colnames(returns_xts)]
 
 # Prior (Pi)
@@ -182,21 +224,24 @@ sector_factors <- sector_mapping_final %>%
     Median_Growth = median(SalesGrowth, na.rm = TRUE),
     .groups = 'drop'
   ) %>%
-  mutate(across(where(is.numeric), ~replace_na(., 0))) %>%
+  mutate(across(where(is.numeric), ~ replace_na(., 0))) %>%
   mutate(Median_PE = ifelse(Median_PE == 0, 20, Median_PE))
 
 # Z-Score Normalization
 sector_scores <- sector_factors %>%
   mutate(
     # Value: Low PE (-), High Yield (+)
-    z_Value = as.vector(scale(Median_Yield) - scale(Median_PE)), 
+    z_Value = as.vector(scale(Median_Yield) - scale(Median_PE)),
     z_Quality = as.vector(scale(Median_ROIC)),
     z_Growth = as.vector(scale(Median_Growth)),
     Final_Funda_Score = (0.3 * z_Value) + (0.4 * z_Quality) + (0.3 * z_Growth)
   )
 
 # Align Scores
-funda_z <- sector_scores$Final_Funda_Score[match(sectors, sector_scores$Sector_Group)]
+funda_z <- sector_scores$Final_Funda_Score[match(
+  sectors,
+  sector_scores$Sector_Group
+)]
 funda_z[is.na(funda_z)] <- 0
 
 # 2. Momentum Scores (Historical 12M Trend)
@@ -209,8 +254,11 @@ comparison_table <- data.frame(
   Sector = sectors,
   Funda_Score_Z = round(funda_z, 2),
   Momentum_Score_Z = round(mom_z, 2),
-  Interpretation = ifelse(funda_z > 0 & mom_z > 0, "Strong Buy (Double Confirm)",
-                          ifelse(funda_z < 0 & mom_z < 0, "Avoid (Double Negative)", "Mixed Signal"))
+  Interpretation = ifelse(
+    funda_z > 0 & mom_z > 0,
+    "Strong Buy (Double Confirm)",
+    ifelse(funda_z < 0 & mom_z < 0, "Avoid (Double Negative)", "Mixed Signal")
+  )
 )
 print("--- FACTOR COMPARISON: CURRENT HEALTH VS HISTORICAL TREND ---")
 print(comparison_table)
@@ -232,7 +280,7 @@ Q <- as.vector(Q_Final)
 
 # Confidence: High if both signals agree
 agreement <- sign(funda_z) == sign(mom_z)
-conf_scaler <- ifelse(agreement, 0.5, 0.8) 
+conf_scaler <- ifelse(agreement, 0.5, 0.8)
 omega_diag <- (conf_scaler * sqrt(diag(Sigma)))^2
 Omega <- diag(omega_diag)
 
@@ -244,7 +292,9 @@ tau <- 0.025
 inv_tau_Sigma <- solve(tau * Sigma)
 inv_Omega <- solve(Omega)
 posterior_Sigma <- solve(inv_tau_Sigma + t(P) %*% inv_Omega %*% P)
-posterior_mu <- as.vector(posterior_Sigma %*% (inv_tau_Sigma %*% Pi + t(P) %*% inv_Omega %*% Q))
+posterior_mu <- as.vector(
+  posterior_Sigma %*% (inv_tau_Sigma %*% Pi + t(P) %*% inv_Omega %*% Q)
+)
 
 # Optimization (Max 35% per sector)
 max_weight <- 0.35
@@ -252,8 +302,8 @@ Amat <- cbind(rep(1, n_sectors), diag(n_sectors), -diag(n_sectors))
 bvec <- c(1, rep(0, n_sectors), rep(-max_weight, n_sectors))
 
 solution <- solve.QP(
-  Dmat = 2 * (lambda * posterior_Sigma), 
-  dvec = posterior_mu,                   
+  Dmat = 2 * (lambda * posterior_Sigma),
+  dvec = posterior_mu,
   Amat = Amat,
   bvec = bvec,
   meq = 1
@@ -276,11 +326,21 @@ print("--- FINAL ALLOCATION ---")
 print(results)
 
 # Visualization
-sector_colors <- c("Banks"="#1f77b4", "Insurance"="#00cccc", "Logistics"="#ff7f0e",
-                   "AI"="#9467bd", "Healthcare"="#2ca02c", "Consumer Discretionary"="#d62728")
+sector_colors <- c(
+  "Banks" = "#1f77b4",
+  "Insurance" = "#00cccc",
+  "Logistics" = "#ff7f0e",
+  "AI" = "#9467bd",
+  "Healthcare" = "#2ca02c",
+  "Consumer Discretionary" = "#d62728"
+)
 
 results %>%
-  pivot_longer(c(Market_Weight, Optimal_Weight), names_to = "Type", values_to = "Weight") %>%
+  pivot_longer(
+    c(Market_Weight, Optimal_Weight),
+    names_to = "Type",
+    values_to = "Weight"
+  ) %>%
   ggplot(aes(x = Sector, y = Weight, fill = Sector)) +
   geom_bar(stat = "identity", position = "dodge") +
   facet_wrap(~Type) +
