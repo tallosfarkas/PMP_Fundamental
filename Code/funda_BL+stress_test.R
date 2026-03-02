@@ -1227,34 +1227,52 @@ print(
 )
 
 # =========================
-# 2) STOCKS WITHIN ±20% SCORE OF EACH PICK (within the same sector) (UPDATED)
+# 2) STOCKS WITHIN ±20% SCORE OF EACH PICK (PER PICK, NO MANY-TO-MANY)
 # =========================
 
 score_band <- 0.20
 
-# Use the Score from picks_detail (guaranteed to exist after coalesce)
 pick_ref <- picks_detail %>%
-  select(Sector_Group, Pick_Ticker = Ticker, Pick_Score = Score)
+  distinct(Sector_Group, Pick_Ticker = Ticker, Pick_Score = Score, Name) %>%
+  select(Sector_Group, Pick_Ticker, Pick_Score)
 
-within_20pct <- funda_scored %>%
-  inner_join(pick_ref, by = "Sector_Group") %>%
-  mutate(RelDiff = rel_diff(Score, Pick_Score)) %>%
-  filter(RelDiff <= score_band) %>%
-  mutate(Is_Pick = (Ticker == Pick_Ticker)) %>%
-  arrange(Sector_Group, Pick_Ticker, RelDiff, desc(Score)) %>%
-  select(
-    Sector_Group,
-    Ticker,
-    Name,
-    Score,
-    Pick_Ticker,
-    Pick_Score,
-    RelDiff,
-    Is_Pick
-  )
+within_20pct <- purrr::map_dfr(seq_len(nrow(pick_ref)), function(i) {
+  sec <- pick_ref$Sector_Group[i]
+  pt <- pick_ref$Pick_Ticker[i]
+  ps <- pick_ref$Pick_Score[i]
 
-cat("\n--- ALL STOCKS WITHIN ±20% OF EACH PICK'S SCORE (same sector) ---\n")
-print(within_20pct)
+  funda_scored %>%
+    filter(Sector_Group == sec) %>%
+    mutate(
+      Pick_Ticker = pt,
+      Pick_Score = ps,
+      RelDiff = rel_diff(Score, ps),
+      Is_Pick = (Ticker == pt)
+    ) %>%
+    filter(RelDiff <= score_band) %>%
+    arrange(RelDiff, desc(Score))
+})
+
+cat(
+  "\n--- ALL STOCKS WITHIN ±20% OF EACH PICK'S SCORE (same sector, per-pick) ---\n"
+)
+print(
+  within_20pct %>%
+    select(
+      Sector_Group,
+      Ticker,
+      Name,
+      Score,
+      Pick_Ticker,
+      Pick_Score,
+      RelDiff,
+      Is_Pick
+    )
+)
 
 cat("\n--- CLOSEST ALTERNATIVES (exclude the picked stock) ---\n")
-print(within_20pct %>% filter(!Is_Pick))
+print(
+  within_20pct %>%
+    filter(!Is_Pick) %>%
+    select(Sector_Group, Ticker, Name, Score, Pick_Ticker, Pick_Score, RelDiff)
+)
