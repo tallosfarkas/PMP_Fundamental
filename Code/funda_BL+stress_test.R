@@ -487,7 +487,7 @@ Omega <- diag(omega_diag)
 # STRESS TEST v2: vary tau (prior uncertainty) and kappa (view uncertainty)
 # ============================================================
 
-delta <- lambda_mkt # investor risk aversion in optimization
+delta <- lambda_mkt * 1.2 # investor risk aversion in optimization
 ub <- 1 # max weight per sector (prevents 100% corners)
 
 # Constraints: sum(w)=1, 0<=w<=ub
