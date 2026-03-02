@@ -1042,3 +1042,219 @@ cat("\nIncluded sectors:", paste(names(sector_w_keep), collapse = ", "), "\n")
 cat("Slots per sector:\n")
 print(slots)
 cat("Sum stock weights:", round(sum(picks$Stock_Weight), 6), "\n")
+
+
+# =========================
+# 1) SCORE BREAKDOWN FOR PICKS  (UPDATED + ROBUST)
+# =========================
+
+# Helper: safe relative difference
+rel_diff <- function(x, y) abs(x - y) / pmax(abs(y), 1e-6)
+
+# Join picks back to funda_scored to grab all the factor columns
+# NOTE: We intentionally rename the funda_scored Name/Score to avoid .x/.y confusion.
+picks_detail <- picks %>%
+  left_join(
+    funda_scored %>%
+      transmute(
+        Sector_Group,
+        Ticker,
+        Name_funda = Name,
+        Score_funda = Score,
+
+        # raw metrics
+        Profitability,
+        ROIC,
+        ROA_ROE,
+        Margin,
+        FCFY,
+        EVEbitdaY,
+        PE,
+        PB,
+        DivY,
+        SalesG,
+        NetDebtEBITDA,
+        DebtAssets,
+        IntCov,
+        CET1Buf,
+        NIM,
+        NPL,
+        Prov,
+        LoanDep,
+        FinLev,
+
+        # z-scores
+        dplyr::across(dplyr::starts_with("z_"), identity)
+      ),
+    by = c("Sector_Group", "Ticker")
+  ) %>%
+  mutate(
+    # Standardize Name/Score into single columns
+    Name = dplyr::coalesce(Name, Name_funda),
+    Score = dplyr::coalesce(Score, Score_funda)
+  )
+
+# Compute component contributions (must mirror your Score formulas)
+picks_breakdown <- picks_detail %>%
+  mutate(
+    # Banks
+    c_z_CET1 = ifelse(Sector_Group == "Banks", 0.20 * z_CET1, 0),
+    c_z_NIM = ifelse(Sector_Group == "Banks", 0.20 * z_NIM, 0),
+    c_z_NPL = ifelse(Sector_Group == "Banks", 0.20 * z_NPL, 0),
+    c_z_Prov = ifelse(Sector_Group == "Banks", 0.10 * z_Prov, 0),
+    c_z_LoanDep = ifelse(Sector_Group == "Banks", 0.10 * z_LoanDep, 0),
+    c_z_PB_b = ifelse(Sector_Group == "Banks", 0.10 * z_PB, 0),
+    c_z_DivY_b = ifelse(Sector_Group == "Banks", 0.10 * z_DivY, 0),
+
+    # Insurance
+    c_z_Prof_i = ifelse(Sector_Group == "Insurance", 0.30 * z_Prof, 0),
+    c_z_Margin_i = ifelse(Sector_Group == "Insurance", 0.15 * z_Margin, 0),
+    c_z_PB_i = ifelse(Sector_Group == "Insurance", 0.20 * z_PB, 0),
+    c_z_DivY_i = ifelse(Sector_Group == "Insurance", 0.15 * z_DivY, 0),
+    c_z_Growth_i = ifelse(Sector_Group == "Insurance", 0.10 * z_Growth, 0),
+    c_z_DebtA_i = ifelse(Sector_Group == "Insurance", 0.05 * z_DebtA, 0),
+    c_z_FinLev_i = ifelse(Sector_Group == "Insurance", 0.05 * z_FinLev, 0),
+
+    # Non-financials (AI, Logistics, Healthcare, Consumer Discretionary)
+    c_z_Prof_nf = ifelse(
+      !(Sector_Group %in% c("Banks", "Insurance")),
+      0.15 * z_Prof,
+      0
+    ),
+    c_z_Margin_nf = ifelse(
+      !(Sector_Group %in% c("Banks", "Insurance")),
+      0.15 * z_Margin,
+      0
+    ),
+    c_z_FCFY_nf = ifelse(
+      !(Sector_Group %in% c("Banks", "Insurance")),
+      0.10 * z_FCFY,
+      0
+    ),
+    c_z_EVy_nf = ifelse(
+      !(Sector_Group %in% c("Banks", "Insurance")),
+      0.10 * z_EVy,
+      0
+    ),
+    c_z_PE_nf = ifelse(
+      !(Sector_Group %in% c("Banks", "Insurance")),
+      -0.10 * z_PE,
+      0
+    ),
+    c_z_Growth_nf = ifelse(
+      !(Sector_Group %in% c("Banks", "Insurance")),
+      0.20 * z_Growth,
+      0
+    ),
+    c_z_Lev_nf = ifelse(
+      !(Sector_Group %in% c("Banks", "Insurance")),
+      0.20 * z_Lev_nf,
+      0
+    )
+  )
+
+# Long table: one row per component per picked stock
+picks_contrib_long <- picks_breakdown %>%
+  select(Sector_Group, Ticker, Name, Score, starts_with("c_")) %>%
+  pivot_longer(
+    cols = starts_with("c_"),
+    names_to = "Component",
+    values_to = "Contribution"
+  ) %>%
+  filter(abs(Contribution) > 1e-10) %>%
+  arrange(Sector_Group, Ticker, desc(abs(Contribution)))
+
+# Sanity check: contributions sum back to Score
+picks_contrib_check <- picks_contrib_long %>%
+  group_by(Sector_Group, Ticker) %>%
+  summarise(
+    Score = first(Score),
+    Sum_Contrib = sum(Contribution),
+    Diff = Score - Sum_Contrib,
+    .groups = "drop"
+  )
+
+cat("\n--- PICKS: CONTRIBUTION CHECK (Score vs Sum of components) ---\n")
+print(picks_contrib_check)
+
+cat("\n--- PICKS: COMPONENT CONTRIBUTIONS (long) ---\n")
+print(picks_contrib_long)
+
+cat("\n--- PICKS: RAW METRICS + Z-SCORES (for context) ---\n")
+print(
+  picks_detail %>%
+    select(
+      Sector_Group,
+      Ticker,
+      Name,
+      Score,
+      Profitability,
+      ROIC,
+      ROA_ROE,
+      Margin,
+      FCFY,
+      EVEbitdaY,
+      PE,
+      PB,
+      DivY,
+      SalesG,
+      NetDebtEBITDA,
+      DebtAssets,
+      IntCov,
+      CET1Buf,
+      NIM,
+      NPL,
+      Prov,
+      LoanDep,
+      FinLev,
+      z_Prof,
+      z_Margin,
+      z_FCFY,
+      z_EVy,
+      z_PE,
+      z_PB,
+      z_DivY,
+      z_Growth,
+      z_Lev_nf,
+      z_DebtA,
+      z_CET1,
+      z_NIM,
+      z_NPL,
+      z_Prov,
+      z_LoanDep,
+      z_FinLev
+    )
+)
+
+# =========================
+# 2) STOCKS WITHIN ±20% SCORE OF EACH PICK (within the same sector) (UPDATED)
+# =========================
+
+score_band <- 0.20
+
+# Use the Score from picks_detail (guaranteed to exist after coalesce)
+pick_ref <- picks_detail %>%
+  select(Sector_Group, Pick_Ticker = Ticker, Pick_Score = Score)
+
+within_20pct <- funda_scored %>%
+  inner_join(pick_ref, by = "Sector_Group") %>%
+  mutate(RelDiff = rel_diff(Score, Pick_Score)) %>%
+  filter(RelDiff <= score_band) %>%
+  mutate(Is_Pick = (Ticker == Pick_Ticker)) %>%
+  arrange(Sector_Group, Pick_Ticker, RelDiff, desc(Score)) %>%
+  select(
+    Sector_Group,
+    Ticker,
+    Name,
+    Score,
+    Pick_Ticker,
+    Pick_Score,
+    RelDiff,
+    Is_Pick
+  )
+
+cat("\n--- ALL STOCKS WITHIN ±20% OF EACH PICK'S SCORE (same sector) ---\n")
+print(within_20pct)
+
+cat("\n--- CLOSEST ALTERNATIVES (exclude the picked stock) ---\n")
+print(within_20pct %>% filter(!Is_Pick))
