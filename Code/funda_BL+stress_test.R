@@ -513,12 +513,12 @@ Q <- as.numeric(view_returns) - rf_annual
 tau <- 0.025
 view_conf <- c(
   # Lower number = Higher confidence
-  "Insurance" = 0.6,
-  "Logistics" = 0.4,
+  "Insurance" = 0.8,
+  "Logistics" = 0.8,
   "AI" = 0.8,
-  "Healthcare" = 0.6,
+  "Healthcare" = 0.8,
   "Consumer Discretionary" = 0.6,
-  "Banks" = 0.5
+  "Banks" = 0.3
 )
 # Ensure view_conf matches valid_views
 conf_vec <- view_conf[valid_views]
